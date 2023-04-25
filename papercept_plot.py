@@ -10,13 +10,13 @@ from matplotlib import pyplot as plt
 
 # fmt: off
 
-year = 2022
+year = 2023
 deadlines = {
-    "start":     datetime.date(year, 3,  9),  # Editor has assigned papers to AEs
+    "start":     datetime.date(year, 3,  13), # Editor has assigned papers to AEs
     "confirmed": datetime.date(year, 3, 20),  # AE should have >=2 reviewers per paper
     "submitted": datetime.date(year, 4, 20),  # Reviewers should have submitted reviews
     "report":    datetime.date(year, 5,  4),  # AE should have submitted reports
-    "endorsed":  datetime.date(year, 5, 18),  # Editor should have endorsed the report
+    "endorsed":  datetime.date(year, 5, 15),  # Editor should have endorsed the report
 }
 # Global variables are evil. But here  I found it handy to have global read-only settings
 # at the beginning of the file. This could have been in a separate CSV file. But I want
@@ -29,7 +29,7 @@ class Paper:
     """Class representing one paper, which is parsed from the HTML file.
     """
 
-    def __init__(self, number, ae, n_reviews, report):
+    def __init__(self, number, ae, n_reviews, report, withdrawn):
         """
         Constructor.
         
@@ -46,6 +46,7 @@ class Paper:
         # But I do, because a submitted review does not mean it was "unconfirmed"
         self.n_reviews["confirmed"] += self.n_reviews["submitted"]
         self.report = report
+        self.withdrawn = withdrawn
 
     @classmethod
     def parse_paper(cls, string_html):
@@ -62,7 +63,7 @@ class Paper:
             return match.group(1) if match else None
 
         papernumber = parse_field(string_html, r'<td class="c">(\d+)&nbsp;</td>')
-        ae = parse_field(string_html, r"<td>.*? (.*?) \(\d+\)&nbsp;</td>")
+        ae = parse_field(string_html, r"<td>(.*?) \(\d+\)&nbsp;</td>") #ae = parse_field(string_html, r"<td>.*? (.*?) \(\d+\)&nbsp;</td>")
 
         # Format in the HTML file
         # <font color="#0000FF">0</font>/           requested
@@ -77,11 +78,12 @@ class Paper:
         n_reviews["submitted"] = int(parse_field(string_html, r"</font>/(\d+)"))
         # fmt: on
 
-        regexp = r"(?:Under review)|(?:Decision pending)"
+        regexp = r"(?:Under review)|(?:Decision pending)|(?:Withdrawn)"
         match = re.compile(regexp).search(string_html)
         report = match.group(0) == "Decision pending" if match else False
+        withdrawn = match.group(0) == "Withdrawn" if match else False
 
-        return Paper(papernumber, ae, n_reviews, report)
+        return Paper(papernumber, ae, n_reviews, report, withdrawn)
 
 
 def parse_papers(filename_html):
@@ -106,7 +108,8 @@ def parse_papers(filename_html):
         elif "</tr>" in line and cur_paper_string:
             # Reading the lines for a paper done: parse it
             paper = Paper.parse_paper(cur_paper_string)
-            papers.append(paper)
+            if not paper.withdrawn:
+                papers.append(paper)
             cur_paper_string = None  # Indicate that reading one paper is done
 
         elif cur_paper_string:
